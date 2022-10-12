@@ -1,0 +1,7 @@
+[core]
+	repositoryformatversion = 0
+	filemode = true
+	bare = true
+[remote "origin"]
+	url = https://github.com/ksegaba/Co-Function-Project.git
+	fetch = +refs/heads/*:refs/remotes/origin/*
