@@ -3,6 +3,7 @@
 Description: Prepare feature matrix from Costanzo 2016 GI data
 - Remove duplicate gene pairs
 - Add pathway information to create label (yes/no co-functional)
+- Filter gene pairs by gene family to get final label
 
 """
 __author__ = "Kenia Segura Abá"
@@ -12,6 +13,7 @@ import datatable as dt
 import pandas as pd
 import numpy as np
 from collections import Counter
+pd.set_option("display.max_columns", None)
 
 def add_pwys(
     df1, df2, new_col, how="left", left_on="Query Gene", right_on="Accession-1", ):
@@ -38,6 +40,7 @@ if __name__=="__main__":
     data.to_csv(f"{costanzo}/SGA_all.csv")
     data = data.to_pandas()
     # data.shape # 19313654 rows
+    del EE, EN, NN # clear memory
 
     ## Add pathway information
     metacyc = "/mnt/home/seguraab/Shiu_Lab/Co-function/Data/MetaCyc"
@@ -56,11 +59,14 @@ if __name__=="__main__":
     array = data["Array Strain ID"].str.split("_", n=2, expand=True)
     data.insert(1, "Array Gene", array[0])
     data = add_pwys(data, pwys, left_on="Array Gene", new_col="Array Pathway")
+    data.shape # (19313654, 16)
 
     ## Aggregate fitness data for duplicate pairs (A-B, B-A)
-    data.drop(["Accession-1_x", "Accession-1_y"], axis=1, inplace=True)
-    data.shape # (19313654, 16)
+    # data.drop(["Accession-1_x", "Accession-1_y"], axis=1, inplace=True)
+    # data.shape # (19313654, 16)
     data.to_csv(f"{costanzo}/SGA_all_pwys.csv", index=False) # save unfiltered dataset
+    # len(query[0].unique()) # 4940 # genes with SMF and DMF data
+    # len(array[0].unique()) # 4450 # genes with SMF and DMF data
     # data.groupby(['Query Gene', 'Array Gene']).size() # counts of duplicate gene pairs
     group = data[["Query Gene", "Array Gene"]].apply(frozenset, axis=1) # gene pairs
     data_med = data.iloc[:,[0,1,9,10,11]].groupby(group).aggregate("median") # median fitness values
@@ -78,6 +84,7 @@ if __name__=="__main__":
     ## Add pathway info again
     data_med = add_pwys(data_med, pwys, new_col="Query Pathway")
     data_med = add_pwys(data_med, pwys, left_on="Array Gene", new_col="Array Pathway")
+    data_med.shape # (12936843, 7)
     data_med = data_med.dropna() # drop gene pairs with missing pathway info
     data_med.shape # (258400, 7)
 
@@ -85,26 +92,13 @@ if __name__=="__main__":
     # 1 (co-functional): query & array pathways are the same
     # 0 (not co-functional): query & array pathways differ
     # split Query Pathway and check if at least one pathway is in Array Pathway
-    data_med['Index'] = np.linspace(0, data_med.shape[0], data_med.shape[0], endpoint=False, dtype="int32")
+    data_med['Index'] = np.linspace(0, data_med.shape[0], data_med.shape[0], endpoint=False, dtype="int32") # reset index
     data_med["Co-Function"] = data_med['Index'].\
         apply(lambda x: 1 if str(bool(\
             [pwy for pwy in data_med.iloc[x,5].split(" // ") \
             if (pwy in data_med.iloc[x,6].split(" // "))]
-        ))=='True' else 0)
+        ))=='True' else 0) # if at least one pathway matches, then 1, else 0
     data_med["Co-Function"].values.sum() # 5026 co-functional gene pairs, 253374 non-cofunctional gene pairs
     data_med.set_index("Index", drop=True, inplace=True)
-
-    ## Ensure non-cofunctional gene pairs are not in the same gene family
-    neg_set = data_med.loc[data_med["Co-Function"]==0,:]
-
-    # gene family data
-
-    # append gene family data
-    # to query 
-    # to array
-
-    # check the gene pairs are not in the same gene family
-    # drop gene pairs that are in the same gene family
-
-    ## save final unblanced dataset
-    # add positive class
+    path = "/mnt/home/seguraab/Shiu_Lab/Co-function/Data/Costanzo_2016/S1/SGA_pwys_fitness.csv"
+    data_med.to_csv(path, chunksize=1000) # feature table with co-function labels based on pathways
